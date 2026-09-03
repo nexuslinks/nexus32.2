@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>3D Intraoral Scan Viewer</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #0f172a; }
+    #overlay { position: absolute; top: 16px; left: 16px; color: white; background: rgba(15, 23, 42, 0.85); padding: 16px; border-radius: 8px; border: 1px solid #334155; }
+    h3 { margin: 0 0 8px 0; font-size: 1.1rem; color: #38bdf8; }
+    p { margin: 4px 0; font-size: 0.9rem; color: #94a3b8; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="overlay">
+  <h3>3D Scan Inspection</h3>
+  <p id="patientInfo">Loading referral data...</p>
+</div>
+
+<script>
+  const token = localStorage.getItem('authToken');
+  const urlParams = new URLSearchParams(window.location.search);
+  const referralId = urlParams.get('referralId');
+
+  if (!token) {
+    window.location.href = `/login.html?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  }
+
+  // 1. FETCH REFERRAL DATA WITH JWT AUTHORIZATION
+  async function loadReferral() {
+    if (!referralId) {
+      document.getElementById('patientInfo').innerText = 'No specific referral loaded. Viewing standard model.';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/referrals/${referralId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById('patientInfo').innerHTML = `
+          <strong>Referral ID:</strong> ${data.referralId}<br>
+          <strong>Patient ID:</strong> ${data.patientId}<br>
+          <strong>Recipient:</strong> ${data.recipientEmail}
+        `;
+      } else {
+        document.getElementById('patientInfo').innerText = `Error: ${data.error}`;
+      }
+    } catch (e) {
+      document.getElementById('patientInfo').innerText = 'Failed to load referral details.';
+    }
+  }
+
+  loadReferral();
+
+  // 2. THREE.JS MATTE SCENE SETUP
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0f172a);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 8);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  document.body.appendChild(renderer.domElement);
+
+  // --- MATTE MATERIAL (Fixes highlights, enhances tooth curvature) ---
+  const matteToothMaterial = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,        // Muted light grey/off-white tone
+    roughness: 0.85,        // High roughness diffuses harsh specular hotspots
+    metalness: 0.0,         // Non-reflective surface
+    flatShading: false      // Smooth anatomical curvature shading
+  });
+
+  // Sample tooth-like mesh geometry for demonstration
+  const geometry = new THREE.TorusKnotGeometry(1.5, 0.5, 128, 32);
+  const toothMesh = new THREE.Mesh(geometry, matteToothMaterial);
+  scene.add(toothMesh);
+
+  // --- LIGHTING SETUP (Soft directional fill to highlight grooves) ---
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+  keyLight.position.set(5, 12, 8);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x94a3b8, 0.35);
+  fillLight.position.set(-5, -8, -5);
+  scene.add(fillLight);
+
+  // Animation Loop
+  function animate() {
+    requestAnimationFrame(animate);
+    toothMesh.rotation.y += 0.005;
+    toothMesh.rotation.x += 0.002;
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+
+</body>
+</html>
